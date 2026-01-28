@@ -1,0 +1,8 @@
+# Ignore the large data files to prevent upload errors
+data/raw/*.parquet
+data/raw/*.shp
+data/raw/*.dbf
+# Ignore the virtual environment
+venv/
+.env
+gitignore
