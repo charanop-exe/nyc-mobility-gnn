@@ -1,0 +1,10 @@
+torch
+numpy
+pandas
+matplotlib
+streamlit
+scikit-learn
+geopandas
+shapely
+pyproj
+fiona
