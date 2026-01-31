@@ -1,59 +1,50 @@
-import pandas as pd
+# src/create_dataset.py
 import numpy as np
+import pandas as pd
 import os
-import sys
 
-# 1. SETUP PATHS
 base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
 demand_path = os.path.join(base_path, 'data', 'processed', 'hourly_demand.csv')
 adj_path = os.path.join(base_path, 'data', 'processed', 'adjacency_matrix.csv')
 output_path = os.path.join(base_path, 'data', 'processed', 'final_dataset.npz')
 
-# 2. LOAD DATA
-df_demand = pd.read_csv(demand_path)
-df_adj = pd.read_csv(adj_path)
+df = pd.read_csv(demand_path)
+df['hour'] = pd.to_datetime(df['hour'])
 
-# Clean column names
-df_demand.columns = df_demand.columns.str.strip()
-df_adj.columns = df_adj.columns.str.strip()
+pivot = df.pivot(index='hour', columns='zone_id', values='demand').fillna(0)
+zones = pivot.columns.tolist()
+mapping = {z: i for i, z in enumerate(zones)}
 
-# Detect columns
-cols = df_demand.columns.tolist()
-time_col = next((c for c in cols if 'hour' in c.lower()), 'hour')
-zone_col = next((c for c in cols if 'id' in c.lower() or 'zone' in c.lower()), 'zone_id')
-val_col = next((c for c in cols if 'demand' in c.lower()), 'demand')
+# Load adjacency
+adj = pd.read_csv(adj_path)
+adj = adj[adj['from_zone'].isin(zones) & adj['to_zone'].isin(zones)]
+adj['from_idx'] = adj['from_zone'].map(mapping)
+adj['to_idx'] = adj['to_zone'].map(mapping)
+edge_index = adj[['from_idx', 'to_idx']].values
 
-# 3. PIVOT DATA
-pivot_demand = df_demand.pivot(index=time_col, columns=zone_col, values=val_col).fillna(0)
-pivot_demand.index = pd.to_datetime(pivot_demand.index)
+# Features
+demand = pivot.values.astype('float32')
+max_val = demand.max()
+demand = demand / max_val
 
-# 4. MAPPING RAW IDS TO INDICES (The "Out of Bounds" Fix)
-active_zones = list(pivot_demand.columns)
-mapping = {id: i for i, id in enumerate(active_zones)}
+hour_feat = pivot.index.hour.values / 23.0
+day_feat = pivot.index.dayofweek.values / 6.0
 
-# Filter and Map Adjacency
-df_adj_filtered = df_adj[df_adj['from_zone'].isin(active_zones) & df_adj['to_zone'].isin(active_zones)].copy()
-df_adj_filtered['from_idx'] = df_adj_filtered['from_zone'].map(mapping)
-df_adj_filtered['to_idx'] = df_adj_filtered['to_zone'].map(mapping)
+hour_feat = np.tile(hour_feat, (demand.shape[1], 1)).T
+day_feat = np.tile(day_feat, (demand.shape[1], 1)).T
 
-# 5. FEATURE ENGINEERING (3D TENSOR)
-num_hours, num_zones = pivot_demand.shape
-demand_raw = pivot_demand.values.astype('float32')
-max_val = demand_raw.max()
-demand_layer = demand_raw / max_val
+data = np.stack([demand, hour_feat, day_feat], axis=-1)
 
-hour_values = (pivot_demand.index.hour.values / 23.0).astype('float32')
-hour_layer = np.tile(hour_values, (num_zones, 1)).T
+# 🔥 Temporal windows
+def make_sequences(data, window=6):
+    X, Y = [], []
+    for t in range(len(data) - window - 1):
+        X.append(data[t:t+window])
+        Y.append(data[t+window][:, 0])
+    return np.array(X), np.array(Y)
 
-day_values = (pivot_demand.index.dayofweek.values / 6.0).astype('float32')
-day_layer = np.tile(day_values, (num_zones, 1)).T
+X, Y = make_sequences(data, window=6)
 
-final_matrix = np.stack([demand_layer, hour_layer, day_layer], axis=-1)
-
-# 6. SAVE
-np.savez(output_path, 
-         data=final_matrix, 
-         adjacency=df_adj_filtered[['from_idx', 'to_idx']].values, 
-         max_val=max_val)
-
-print(f"✅ SUCCESS: Dataset {final_matrix.shape} saved with {len(df_adj_filtered)} edges.")
+np.savez(output_path, X=X, Y=Y, adjacency=edge_index, max_val=max_val)
+print("✅ final_dataset.npz created with temporal windows")

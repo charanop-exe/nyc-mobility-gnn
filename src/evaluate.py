@@ -1,53 +1,93 @@
-import torch
-import numpy as np
-import matplotlib.pyplot as plt
+# src/evaluate.py
 import os
+import numpy as np
+import torch
+import matplotlib.pyplot as plt
 from model import TrafficGNN
 
-# 1. SETUP PATHS
+# --------------------------------------------------
+# 1. PATHS & DEVICE
+# --------------------------------------------------
 base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 data_path = os.path.join(base_path, 'data', 'processed', 'final_dataset.npz')
-weights_path = os.path.join(base_path, 'data', 'processed', 'model_weights.pth')
+model_path = os.path.join(base_path, 'data', 'processed', 'model_weights.pth')
+output_dir = os.path.join(base_path, 'data', 'processed')
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print(f"🖥️ Using device: {device}")
+
+# --------------------------------------------------
 # 2. LOAD DATA
-data_load = np.load(data_path)
-data = torch.tensor(data_load['data'], dtype=torch.float32)
-edge_index = torch.tensor(data_load['adjacency'], dtype=torch.long).t().contiguous()
-max_val = data_load['max_val']
+# --------------------------------------------------
+data = np.load(data_path)
 
-# 3. INITIALIZE & LOAD MODEL
-num_nodes = data.shape[1]
-model = TrafficGNN(num_nodes=num_nodes, input_dim=3)
-model.load_state_dict(torch.load(weights_path))
+X = torch.tensor(data['X'], dtype=torch.float32).to(device)   # [samples, T, N, F]
+Y = torch.tensor(data['Y'], dtype=torch.float32).to(device)   # [samples, N]
+edge_index = torch.tensor(data['adjacency'], dtype=torch.long).t().contiguous().to(device)
+max_val = data['max_val']
+
+num_zones = Y.shape[1]
+print(f"📦 Loaded evaluation data | Zones: {num_zones}")
+
+# --------------------------------------------------
+# 3. LOAD MODEL
+# --------------------------------------------------
+model = TrafficGNN(input_dim=3, hidden_dim=32).to(device)
+model.load_state_dict(torch.load(model_path, map_location=device))
 model.eval()
 
-print(f"📊 Evaluating the 49% GNN model on {num_nodes} zones...")
+print("✅ Model loaded successfully")
 
-# 4. PREDICT
-test_hour = 700 
-# Features: [Demand, Hour, Day]
-x = data[test_hour] 
+# --------------------------------------------------
+# 4. RUN EVALUATION (ONE SAMPLE)
+# --------------------------------------------------
+# Pick a test index safely (not training example 0)
+test_index = int(len(X) * 0.8)
 
 with torch.no_grad():
-    # In this version, model returns a single tensor
-    prediction = model(x, edge_index).numpy().flatten()
+    prediction = model(X[test_index:test_index+1], edge_index)  # [1, N]
 
-# 5. RE-SCALE
-y_pred_real = prediction * max_val
-y_true_real = data[test_hour+1][:, 0].numpy() * max_val
+# Convert back to numpy & rescale
+y_pred = prediction.squeeze(0).cpu().numpy() * max_val
+y_true = Y[test_index].cpu().numpy() * max_val
 
-# 6. PLOT RESULTS
-plt.figure(figsize=(15, 6))
-plt.plot(y_true_real[:60], label='Actual NYC Demand', color='#1f77b4', marker='o', alpha=0.8)
-plt.plot(y_pred_real[:60], label='GNN AI Prediction', color='#d62728', linestyle='--', marker='x')
+# --------------------------------------------------
+# 5. SAVE RESULTS (IMPORTANT FOR METRICS)
+# --------------------------------------------------
+np.save(os.path.join(output_dir, 'y_pred.npy'), y_pred)
+np.save(os.path.join(output_dir, 'y_true.npy'), y_true)
 
-plt.title(f'GNN Result: NYC Taxi Demand Prediction (Hour {test_hour})', fontsize=14)
-plt.xlabel('Taxi Zone Index', fontsize=12)
-plt.ylabel('Number of Pickups', fontsize=12)
+print("💾 Saved y_pred.npy and y_true.npy")
+
+# --------------------------------------------------
+# 6. PLOT RESULTS (FIRST 60 ZONES)
+# --------------------------------------------------
+zones_to_plot = 60
+
+plt.figure(figsize=(14, 6))
+plt.plot(
+    y_true[:zones_to_plot],
+    label="Actual Demand",
+    marker='o',
+    linewidth=2
+)
+plt.plot(
+    y_pred[:zones_to_plot],
+    label="Predicted Demand",
+    linestyle='--',
+    marker='x',
+    linewidth=2
+)
+
+plt.title("NYC Taxi Demand Prediction (Zone-wise)", fontsize=14)
+plt.xlabel("Taxi Zone Index", fontsize=12)
+plt.ylabel("Number of Pickups", fontsize=12)
 plt.legend()
-plt.grid(True, linestyle=':', alpha=0.5)
+plt.grid(alpha=0.3)
 
-# Save the plot
-plt.savefig(os.path.join(base_path, 'data', 'processed', 'gnn_49pct_eval.png'))
-print("✅ Evaluation Complete! Plot saved to data/processed.")
+plot_path = os.path.join(output_dir, 'evaluation_plot.png')
+plt.savefig(plot_path)
 plt.show()
+
+print(f"📊 Evaluation plot saved to: {plot_path}")
+print("✅ Evaluation complete")
