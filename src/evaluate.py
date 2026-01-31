@@ -4,54 +4,50 @@ import matplotlib.pyplot as plt
 import os
 from model import TrafficGNN
 
-# 1. SETUP PATHS & LOAD DATA
+# 1. SETUP PATHS
 base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 data_path = os.path.join(base_path, 'data', 'processed', 'final_dataset.npz')
 weights_path = os.path.join(base_path, 'data', 'processed', 'model_weights.pth')
 
-data = np.load(data_path)
-demand_raw = torch.tensor(data['demand'], dtype=torch.float32)
+# 2. LOAD DATA
+data_load = np.load(data_path)
+data = torch.tensor(data_load['data'], dtype=torch.float32)
+edge_index = torch.tensor(data_load['adjacency'], dtype=torch.long).t().contiguous()
+max_val = data_load['max_val']
 
-# --- THE KEY ADDITION: DEFINING MAX_VAL ---
-max_val = demand_raw.max() 
-demand = demand_raw / max_val  # Normalize just like in training
-# ------------------------------------------
-
-adj_data = data['adjacency']
-edge_index = torch.tensor(adj_data[:, :2], dtype=torch.long).t().contiguous()
-
-# 2. LOAD TRAINED MODEL
-num_nodes = demand.shape[1]
-model = TrafficGNN(num_nodes=num_nodes, input_dim=1, output_dim=1)
+# 3. INITIALIZE & LOAD MODEL
+num_nodes = data.shape[1]
+model = TrafficGNN(num_nodes=num_nodes, input_dim=3)
 model.load_state_dict(torch.load(weights_path))
 model.eval()
 
-print(f"📈 Evaluating with max_val: {max_val:.2f}")
+print(f"📊 Evaluating the 49% GNN model on {num_nodes} zones...")
 
-# 3. RUN PREDICTION
+# 4. PREDICT
 test_hour = 700 
-x = demand[test_hour].view(num_nodes, 1)
+# Features: [Demand, Hour, Day]
+x = data[test_hour] 
 
 with torch.no_grad():
-    y_pred = model(x, edge_index).numpy()
+    # In this version, model returns a single tensor
+    prediction = model(x, edge_index).numpy().flatten()
 
-# --- RE-SCALE FOR THE GRAPH ---
-y_pred_real = y_pred * max_val.item()
-y_true_real = demand_raw[test_hour+1].numpy()
-# ------------------------------
+# 5. RE-SCALE
+y_pred_real = prediction * max_val
+y_true_real = data[test_hour+1][:, 0].numpy() * max_val
 
-# 4. VISUALIZE RESULTS
-plt.figure(figsize=(12, 6))
-plt.plot(y_true_real[:50], label='Actual Demand (NYC)', color='blue', marker='o')
-plt.plot(y_pred_real[:50], label='AI Prediction', color='red', linestyle='--', marker='x')
-plt.title(f'NYC Taxi Demand Prediction - Hour {test_hour+1}')
-plt.xlabel('Taxi Zone ID')
-plt.ylabel('Number of Pickups')
+# 6. PLOT RESULTS
+plt.figure(figsize=(15, 6))
+plt.plot(y_true_real[:60], label='Actual NYC Demand', color='#1f77b4', marker='o', alpha=0.8)
+plt.plot(y_pred_real[:60], label='GNN AI Prediction', color='#d62728', linestyle='--', marker='x')
+
+plt.title(f'GNN Result: NYC Taxi Demand Prediction (Hour {test_hour})', fontsize=14)
+plt.xlabel('Taxi Zone Index', fontsize=12)
+plt.ylabel('Number of Pickups', fontsize=12)
 plt.legend()
-plt.grid(True)
+plt.grid(True, linestyle=':', alpha=0.5)
 
 # Save the plot
-plot_path = os.path.join(base_path, 'data', 'processed', 'prediction_results.png')
-plt.savefig(plot_path)
-print(f"✅ Success! Plot saved to: {plot_path}")
+plt.savefig(os.path.join(base_path, 'data', 'processed', 'gnn_49pct_eval.png'))
+print("✅ Evaluation Complete! Plot saved to data/processed.")
 plt.show()
