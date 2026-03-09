@@ -6,4 +6,4 @@ data/raw/*.dbf
 venv/
 .env
 .gitignore
-project_workflow.md.resolved
+project_workflow.md
