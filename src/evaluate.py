@@ -39,47 +39,59 @@ model.eval()
 print("✅ Model loaded successfully")
 
 # --------------------------------------------------
-# 4. RUN EVALUATION (ONE SAMPLE)
+# 4. TRAIN/TEST SPLIT & FULL TEST EVALUATION
 # --------------------------------------------------
-# Pick a test index safely (not training example 0)
-test_index = int(len(X) * 0.8)
+split_idx = int(len(X) * 0.8)
+X_test = X[split_idx:]
+Y_test = Y[split_idx:]
 
+print(f"📊 Evaluating on {len(X_test)} test samples (from index {split_idx})")
+
+all_preds = []
 with torch.no_grad():
-    prediction = model(X[test_index:test_index+1], edge_index)  # [1, N]
+    for i in range(len(X_test)):
+        prediction = model(X_test[i:i+1], edge_index)  # [1, N]
+        all_preds.append(prediction.squeeze(0))
 
-# Convert back to numpy & rescale
-y_pred = prediction.squeeze(0).cpu().numpy() * max_val
-y_true = Y[test_index].cpu().numpy() * max_val
+all_preds = torch.stack(all_preds)  # [test_samples, N]
+
+# Average across test samples for zone-level comparison
+y_pred_avg = all_preds.mean(dim=0).cpu().numpy() * max_val
+y_true_avg = Y_test.mean(dim=0).cpu().numpy() * max_val
+
+# Also save the full flattened arrays for detailed metrics
+y_pred_flat = all_preds.cpu().numpy().flatten() * max_val
+y_true_flat = Y_test.cpu().numpy().flatten() * max_val
 
 # --------------------------------------------------
-# 5. SAVE RESULTS (IMPORTANT FOR METRICS)
+# 5. SAVE RESULTS
 # --------------------------------------------------
-np.save(os.path.join(output_dir, 'y_pred.npy'), y_pred)
-np.save(os.path.join(output_dir, 'y_true.npy'), y_true)
+np.save(os.path.join(output_dir, 'y_pred.npy'), y_pred_flat)
+np.save(os.path.join(output_dir, 'y_true.npy'), y_true_flat)
 
-print("💾 Saved y_pred.npy and y_true.npy")
+print(f"💾 Saved y_pred.npy ({y_pred_flat.shape}) and y_true.npy ({y_true_flat.shape})")
 
 # --------------------------------------------------
-# 6. PLOT RESULTS (FIRST 60 ZONES)
+# 6. PLOT RESULTS (FIRST 60 ZONES — AVERAGED)
 # --------------------------------------------------
 zones_to_plot = 60
 
 plt.figure(figsize=(14, 6))
 plt.plot(
-    y_true[:zones_to_plot],
-    label="Actual Demand",
+    y_true_avg[:zones_to_plot],
+    label="Actual Demand (avg)",
     marker='o',
     linewidth=2
 )
 plt.plot(
-    y_pred[:zones_to_plot],
-    label="Predicted Demand",
+    y_pred_avg[:zones_to_plot],
+    label="Predicted Demand (avg)",
     linestyle='--',
     marker='x',
     linewidth=2
 )
 
-plt.title("NYC Taxi Demand Prediction (Zone-wise)", fontsize=14)
+plt.title("NYC Taxi Demand Prediction (Zone-wise, Test Set Average)", fontsize=14)
 plt.xlabel("Taxi Zone Index", fontsize=12)
 plt.ylabel("Number of Pickups", fontsize=12)
 plt.legend()

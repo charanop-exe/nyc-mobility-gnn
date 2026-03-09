@@ -171,19 +171,29 @@ Add screenshots inside a `screenshots/` folder and reference them here:
 
 spatial_temporal_mobility  
 ├── src  
+│   ├── __init__.py  
+│   ├── data_aggregation.py  
+│   ├── adjacency_matrix.py  
+│   ├── create_dataset.py  
 │   ├── model.py  
 │   ├── train.py  
 │   ├── evaluate.py  
+│   ├── calculate_metrics.py  
 │   ├── api.py  
 │   └── app.py  
 │  
 ├── data  
 │   ├── raw  
-│   │   └── taxi_zones.shp  
+│   │   ├── yellow_tripdata_2025-01.parquet  
+│   │   ├── taxi_zones.shp  
+│   │   └── taxi_zone_lookup.csv  
 │   └── processed  
+│       ├── hourly_demand.csv  
+│       ├── adjacency_matrix.csv  
 │       ├── final_dataset.npz  
 │       └── model_weights.pth  
 │  
+├── requirements.txt  
 └── README.md  
 
 ---

@@ -14,9 +14,9 @@ COPY (
         date_trunc('hour', tpep_pickup_datetime) AS hour,
         PULocationID AS zone_id,
         COUNT(*) AS demand
-    FROM read_parquet('{input_path.replace("\\\\","/")}')
+    FROM read_parquet('{input_path.replace(chr(92), "/")}')
     GROUP BY 1,2
-) TO '{output_path.replace("\\\\","/")}' (FORMAT CSV, HEADER);
+) TO '{output_path.replace(chr(92), "/")}' (FORMAT CSV, HEADER);
 """
 
 duckdb.execute(query)

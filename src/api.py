@@ -3,7 +3,7 @@ import os
 import numpy as np
 import torch
 from fastapi import FastAPI
-from src.model import TrafficGNN
+from model import TrafficGNN
 
 # --------------------------------------------------
 # 1. APP INITIALIZATION

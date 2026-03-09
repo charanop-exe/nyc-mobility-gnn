@@ -2,8 +2,21 @@
 data/raw/*.parquet
 data/raw/*.shp
 data/raw/*.dbf
+data/raw/*.shx
+data/raw/*.sbn
+data/raw/*.sbx
+data/raw/*.prj
+data/raw/*.shp.xml
+
+# Ignore processed outputs (regeneratable)
+data/processed/
+
 # Ignore the virtual environment
 venv/
+myVenv/
 .env
-.gitignore
-project_workflow.md
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo

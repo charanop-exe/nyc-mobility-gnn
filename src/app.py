@@ -50,11 +50,16 @@ def load_everything():
         zip(zone_lookup["LocationID"], zone_lookup["Zone"])
     )
 
-    # IMPORTANT: zone order must match dataset column order
-    zone_ids = sorted(location_to_name.keys())
+    # Read the actual zone order from hourly_demand.csv (same order used in create_dataset.py)
+    demand_df = pd.read_csv(
+        os.path.join(base_path, "data", "processed", "hourly_demand.csv")
+    )
+    demand_df['hour'] = pd.to_datetime(demand_df['hour'])
+    pivot = demand_df.pivot(index='hour', columns='zone_id', values='demand').fillna(0)
+    zone_ids = pivot.columns.tolist()  # Matches dataset column order exactly
 
     zone_index_to_name = {
-        i: location_to_name[zone_ids[i]]
+        i: location_to_name.get(zone_ids[i], f"Zone {zone_ids[i]}")
         for i in range(len(zone_ids))
     }
 
